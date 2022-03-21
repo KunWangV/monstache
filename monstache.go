@@ -66,6 +66,8 @@ var errorLog = log.New(os.Stderr, "ERROR ", log.Flags())
 var mapperPlugin func(*monstachemap.MapperPluginInput) (*monstachemap.MapperPluginOutput, error)
 var filterPlugin func(*monstachemap.MapperPluginInput) (bool, error)
 var processPlugin func(*monstachemap.ProcessPluginInput) error
+var afterBulkPlugin func(*monstachemap.AfterBulkPluginInput)
+
 var pipePlugin func(string, bool) ([]interface{}, error)
 var mapEnvs = make(map[string]*executionEnv)
 var filterEnvs = make(map[string]*executionEnv)
@@ -542,6 +544,15 @@ func (config *configOptions) ignoreCollectionForDirectReads(col string) bool {
 }
 
 func afterBulk(executionID int64, requests []elastic.BulkableRequest, response *elastic.BulkResponse, err error) {
+	if afterBulkPlugin != nil {
+		afterBulkPlugin(&monstachemap.AfterBulkPluginInput{
+			ExecutionID: executionID,
+			Requests:    requests,
+			Response:    response,
+			Err:         err,
+		})
+	}
+
 	if response == nil || !response.Errors {
 		return
 	}
@@ -552,11 +563,11 @@ func afterBulk(executionID int64, requests []elastic.BulkableRequest, response *
 				// is already in the index
 				continue
 			}
-			json, err := json.Marshal(item)
+			_json, err := json.Marshal(item)
 			if err != nil {
 				errorLog.Printf("Unable to marshal bulk response item: %s", err)
 			} else {
-				errorLog.Printf("Bulk response item: %s", string(json))
+				errorLog.Printf("Bulk response item: %s", string(_json))
 			}
 		}
 	}
@@ -2021,6 +2032,19 @@ func (config *configOptions) loadPlugins() *configOptions {
 				errorLog.Fatalf("Plugin 'Pipeline' function must be typed %T", pipePlugin)
 			}
 		}
+
+		afterBulkFunc, err := p.Lookup("AfterBulk")
+		if err == nil {
+			funcDefined = true
+			switch afterBulkFunc.(type) {
+			case func(*monstachemap.AfterBulkPluginInput):
+				afterBulkPlugin = afterBulkFunc.(func(*monstachemap.AfterBulkPluginInput))
+				infoLog.Printf("Plugin 'AfterBulk' function loaded...")
+			default:
+				errorLog.Fatalf("Plugin 'AfterBulk' function must be type: %T ", afterBulkPlugin)
+			}
+		}
+
 		if !funcDefined {
 			warnLog.Println("Plugin loaded but did not find a Map, Filter, Process or Pipeline function")
 		}

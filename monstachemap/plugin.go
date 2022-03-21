@@ -50,3 +50,10 @@ type ProcessPluginInput struct {
 	ElasticBulkProcessor *elastic.BulkProcessor // Elasticsearch processor for indexing in bulk
 	Timestamp            primitive.Timestamp    // the timestamp of the event from the oplog
 }
+
+type AfterBulkPluginInput struct {
+	ExecutionID int64
+	Requests    []elastic.BulkableRequest
+	Response    *elastic.BulkResponse
+	Err         error
+}
